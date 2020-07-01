@@ -20,6 +20,7 @@
 
 #include "libbluecherry.h"
 #include <pthread.h>
+#include <thread>
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -38,6 +39,9 @@ extern pthread_mutex_t mutex_max_record_time_sec;
 
 /* Default configuration file */
 #define BC_CONFIG_DEFAULT      "/etc/bluecherry.conf"
+
+#define BC_MAINSTREAM_START_FAILED 1
+#define BC_SUBSTREAM_START_FAILED 2
 
 class bc_record
 {
@@ -93,6 +97,10 @@ public:
 	class trigger_processor *t_processor;
 	class motion_handler *m_handler;
 	class recorder *rec;
+
+	/* Live View substream */
+	class substream *liveview_substream;
+	class std::thread *liveview_substream_thread;
 
 	/* Livestream reencoding */
 	class reencoder *reenc;
@@ -161,7 +169,7 @@ int decode_one_video_packet(struct bc_record *bc_rec, const stream_packet &packe
 int save_event_snapshot(struct bc_record *bc_rec, const stream_packet &packet);
 
 /* Streaming */
-int bc_streaming_setup(struct bc_record *bc_rec);
+int bc_streaming_setup(struct bc_record *bc_rec, std::shared_ptr<const stream_properties> props);
 void bc_streaming_destroy(struct bc_record *bc_rec);
 int bc_streaming_is_setup(struct bc_record *bc_rec) __attribute__((pure));
 int bc_streaming_is_active(struct bc_record *bc_rec) __attribute__((pure));

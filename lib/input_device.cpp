@@ -159,6 +159,30 @@ stream_properties::video_properties::video_properties()
 {
 }
 
+bool stream_properties::operator!=(const stream_properties& other) const
+{
+	if (video.codec_id != other.video.codec_id
+		|| video.pix_fmt != other.video.pix_fmt
+		|| video.width != other.video.width
+		|| video.height != other.video.height
+		|| video.profile != other.video.profile)
+		return true;
+
+	if (has_audio() != other.has_audio())
+		return true;
+
+	if (has_audio()) {
+		if (audio.codec_id != other.audio.codec_id
+		|| audio.sample_rate != other.audio.sample_rate
+		|| audio.sample_fmt != other.audio.sample_fmt
+		|| audio.channels != other.audio.channels
+		|| audio.bits_per_coded_sample != other.audio.bits_per_coded_sample)
+		return true;
+	}
+
+	return false;
+}
+
 void stream_properties::video_properties::apply(AVCodecContext *cc) const
 {
 	cc->codec_id = codec_id;
@@ -168,19 +192,6 @@ void stream_properties::video_properties::apply(AVCodecContext *cc) const
 	cc->height = height;
 	cc->time_base = time_base;
 	cc->profile = profile;
-
-	cc->codec_tag = codec_tag;
-	cc->bits_per_coded_sample = bits_per_coded_sample;
-	cc->bits_per_raw_sample = bits_per_raw_sample;
-	cc->level = level;
-	cc->field_order = field_order;
-	cc->color_range = color_range;
-	cc->color_primaries = color_primaries;
-	cc->color_trc = color_trc;
-	cc->colorspace = colorspace;
-	cc->chroma_sample_location = chroma_sample_location;
-	cc->sample_aspect_ratio = sample_aspect_ratio;
-
 	if (!extradata.empty()) {
 		cc->extradata_size = extradata.size();
 		cc->extradata = (uint8_t*)av_malloc(extradata.size() + AV_INPUT_BUFFER_PADDING_SIZE);

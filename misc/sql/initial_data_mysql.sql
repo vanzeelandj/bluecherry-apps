@@ -1,6 +1,6 @@
 INSERT INTO Users (`username`, `password`, `salt`, `name`, `email`, `phone`, `notes`, `access_setup`, `access_remote`, `access_web`, `access_backup`, `access_relay`) VALUES ('Admin', 'b22dec1d6cfa580962f3a3796a5dc6b3', '1234', 'Bluecherry Admin', NULL, NULL, NULL, 1, 1, 1, 1, 1);
 
-INSERT INTO GlobalSettings VALUES ('G_DVR_NAME', 'Bluecherry DVR v2');
+INSERT INTO GlobalSettings VALUES ('G_DVR_NAME', 'Bluecherry DVR v3');
 INSERT INTO GlobalSettings VALUES ('G_DVR_EMAIL', 'root@localhost');
 INSERT INTO GlobalSettings VALUES ('G_DEV_SCED', 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC');
 INSERT INTO GlobalSettings VALUES ('G_DEV_NOTES', '');
@@ -17,7 +17,7 @@ INSERT INTO GlobalSettings VALUES ('G_SMTP_PORT', '25');
 INSERT INTO GlobalSettings VALUES ('G_SMTP_SSL', 'none');
 INSERT INTO GlobalSettings VALUES ('G_SMTP_FAIL', NULL);
 INSERT INTO GlobalSettings VALUES ('G_SMTP_SERVICE', 'default');
-INSERT INTO GlobalSettings VALUES ('G_VAAPI_DEVICE', '/dev/dri/renderD128');
+INSERT INTO GlobalSettings VALUES ('G_VAAPI_DEVICE', 'Autodetect');
 
 INSERT INTO Storage VALUES (1, '/var/lib/bluecherry/recordings', 95.00, 90.00);
 

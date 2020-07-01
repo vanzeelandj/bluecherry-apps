@@ -128,6 +128,9 @@ case "$1" in
 			elif [[ "$UBUNTU_CODENAME" == 'bionic' ]]
 			then
 				a2enmod php7.2
+			elif [[ "$VERSION" == "10 (buster)" ]]
+			then
+				a2enmod php7.3
 			else
 				a2enmod php5
 			fi
@@ -188,6 +191,8 @@ case "$1" in
 				db_fset bluecherry/db_name              seen false || true
 				db_fset bluecherry/db_user              seen false || true
 				db_fset bluecherry/db_password          seen false || true
+				db_fset bluecherry/db_host				seen false || true
+				db_fset bluecherry/db_userhost		    seen false || true
 
 				# Ask questions
 				db_input high bluecherry/mysql_admin_login  || true
@@ -199,20 +204,26 @@ case "$1" in
 				db_get bluecherry/mysql_admin_password  || true
 				export MYSQL_ADMIN_PASSWORD="$RET"
 
+				db_input high bluecherry/db_host  || true
 				db_input high bluecherry/db_name  || true
 				db_go  || true
-
+				
+				db_get bluecherry/db_host || true
+				export host="$RET"
 				db_get bluecherry/db_name  || true
 				export dbname="$RET"
 				
 				db_input high bluecherry/db_user  || true
 				db_input high bluecherry/db_password  || true
+				db_input high bluecherry/db_userhost || true
 				db_go  || true
 
 				db_get bluecherry/db_user  || true
 				export user="$RET"
 				db_get bluecherry/db_password  || true
 				export password="$RET"
+				db_get bluecherry/db_userhost || true
+				export userhost="$RET"
 			else
 				export MYSQL_ADMIN_LOGIN="root"
 				export MYSQL_ADMIN_PASSWORD=""
@@ -227,16 +238,16 @@ case "$1" in
 			fi
 
 			/usr/share/bluecherry/bc_db_tool.sh new_db "$MYSQL_ADMIN_LOGIN" "$MYSQL_ADMIN_PASSWORD" \
-				"$dbname" "$user" "$password" || exit 1
+				"$dbname" "$user" "$password" "$host" "$userhost" || exit 1
 
 			# Generate config
 			if [[ $IN_DEB ]]
 			then
-				dbhost="localhost"
+				dbhost="${host:-localhost}"
 			else
-				dbhost="127.0.0.1"
+				dbhost="${host:-127.0.0.1}"
 			fi
-			cat /usr/share/bluecherry/bluecherry.conf.in | sed -e "s/_DBC_DBNAME_/${dbname}/"  -e "s/_DBC_DBUSER_/${user}/"  -e "s/_DBC_DBPASS_/${password}/" -e "s/_DBC_HOST_/${dbhost}/" > /etc/bluecherry.conf
+			cat /usr/share/bluecherry/bluecherry.conf.in | sed -e "s/_DBC_DBNAME_/${dbname}/"  -e "s/_DBC_DBUSER_/${user}/"  -e "s/_DBC_DBPASS_/${password}/" -e "s/_DBC_HOST_/${dbhost}/" -e "s/_DBC_USERHOST_/${userhost}/"> /etc/bluecherry.conf
 			chown root:bluecherry /etc/bluecherry.conf
 			chmod 640 /etc/bluecherry.conf
 		else

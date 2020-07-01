@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2019 Bluecherry, LLC
+ * Copyright 2010-2020 Bluecherry, LLC
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -15,37 +15,18 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __LIBBLUECHERRY_DECODER_H
-#define __LIBBLUECHERRY_DECODER_H
-
-#include "stream_elements.h"
-
-class decoder
+#ifndef __SUBSTREAM_THREAD_H
+class substream
 {
 public:
-	decoder(int media_type);
-	~decoder();
-
-	void push_packet(const stream_packet &pkt);
-	//const char *get_error_message();
-	//bool has_error() const;
-
-	bool decode();
-	AVFrame *decoded_frame();
-	const struct AVCodecContext *get_ctx() const { return decoder_ctx; }
-	bool properties_changed();
-
+	explicit substream();
+	void run(struct bc_record *r);
+	void stop();
 private:
-	struct AVCodecContext *decoder_ctx;
-	AVFrame *frame;
-	int type;
-	std::shared_ptr<const stream_properties> saved_properties;
-	bool props_changed;
-
-	bool init_decoder();
-	void release_decoder();
-	void print_av_errormsg(int ret);
+	/* struct bc_record *rec; */
+	bool exit_flag;
 };
+#define __SUBSTREAM_THREAD_H
 
 #endif
 

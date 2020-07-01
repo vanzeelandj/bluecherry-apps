@@ -353,6 +353,8 @@ define('AIP_USER', 'Username');
 define('AIP_PASS', 'Password');
 define('AIP_MJPATH', 'Path to MJPEG');
 define('AIP_RTSP', 'Path to RTSP');
+define('AIP_SUBSTREAM_ENABLE', 'Use substream for live view');
+define('AIP_SUBSTREAM_PATH', 'Substream path');
 define('AIP_ADD', 'Add camera');
 define('AIP_ALREADY_EXISTS', 'Camera with these settings already exists in the list of the devices.');
 define('AIP_NAME_ALREADY_EXISTS', 'Camera with this name already exists. Names must be unique.');
@@ -378,7 +380,7 @@ define('IPCAM_DEBUG_LEVEL', 'Turn camera debugging on:');
 define('DEVICE_EDIT_DETAILS', 'Properties');
 define('DELETE_CAM', 'Delete');
 define('PROPS_HEADER', 'IP Camera properties');
-define('IPCAM_WIKI_LINK', 'Is your IP camera not in the list?  We maintain a larger list of MJPEG and RTSP paths <a href="http://www.bluecherrydvr.com/2012/01/technical-information-list-of-mjpeg-and-rtsp-paths-for-network-cameras/">here</a>.  If you run into problems, please <a href="https://www.hipchat.com/gDERje4QK">join us on HipChat</a> (https://www.hipchat.com/gDERje4QK) and we\'ll see if we can add support for it.');
+define('IPCAM_WIKI_LINK', 'Is your IP camera not in the list?  We maintain a larger list of MJPEG and RTSP paths <a href="https://www.bluecherrydvr.com/supported-ip-cameras/">here</a>.  If you run into problems, please https://www.bluecherrydvr.com/chat/join us on Slack</a> (https://www.bluecherrydvr.com/chat/) and we\'ll try to add support for your camera.');
 define('SERVER_NOT_RUNNING', 'Server process stopped.');
 define('SERVER_RUNNING', 'Server process running');
 define('NOT_UP_TO_DATE', 'New version available.');
@@ -436,12 +438,9 @@ define('STRAGE_HEADER', 'Manage storage locations');
 define('ADD_LOCATION', 'Add location');
 define('LOCATION', 'Folder:');
 define('STORAGE_INFO_MESSAGE', 'Please note that if you add a new storage location, you need to make sure that: <br /> - folder exists <br /> - folder is empty <br /> - folder belongs to user bluecherry, group bluecherry.');
-define('DIR_DOES_NOT_EXIST_OR_NOT_READABLE', 'Server could not open the specified directory "<b>%PATH%</b>", please make sure it exists and the server can connect to it by running these commands in the terminal: <br /><br />
-		To create directory run: "sudo mkdir -p %PATH%" <br />
-		To set permissions run: "sudo chmod 770 %PATH%; sudo chown bluecherry:bluecherry -R %PATH%".
+define('DIR_DOES_NOT_EXIST_OR_NOT_READABLE', 'Server could not open the specified directory "<b>%PATH%</b>". See Note 2.
 	');
-define('DIR_NOT_READABLE', 'Specified directory exists, but is not readable, please make sure that the server has permissions to access it by running these commands in the terminal:<br /><br />
-		To set permissions run: "sudo chmod 770 %PATH%; sudo chown bluecherry:bluecherry -R %PATH%".
+define('DIR_NOT_READABLE', 'Specified directory "<b>%PATH%</b>" exists, but is not readable. See Note 2.
 	');
 define('DIR_NOT_EMPTY', 'Specified directory is not empty, all contents will be deleted after it is added.');
 define('DIR_OK', 'Specified directory exists and is writable. Click "save" to add this location.');

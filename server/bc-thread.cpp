@@ -33,6 +33,7 @@
 #include "trigger_processor.h"
 #include "motion_handler.h"
 #include "recorder.h"
+#include "substream-thread.h"
 
 #define DEF_TH_LOG_LEVEL Warning
 
@@ -55,7 +56,20 @@ static void do_error_event(struct bc_record *bc_rec, bc_event_level_t level,
 
 void stop_handle_properly(struct bc_record *bc_rec)
 {
-	bc_streaming_destroy(bc_rec);
+	if (!bc_rec->bc->substream_mode)
+		bc_streaming_destroy(bc_rec);
+
+	if (bc_rec->liveview_substream)
+	{
+		bc_rec->liveview_substream->stop();
+		bc_rec->liveview_substream_thread->join();
+		delete bc_rec->liveview_substream;
+		delete bc_rec->liveview_substream_thread;
+		bc_rec->liveview_substream = 0;
+		bc_rec->liveview_substream_thread = 0;
+	}
+
+
 	bc_rec->bc->input->stop();
 }
 
@@ -169,22 +183,27 @@ void bc_record::run()
 				break;
 		}
 
+		if (bc->substream_mode && !liveview_substream) {
+			liveview_substream = new substream();
+			liveview_substream_thread = new std::thread(&substream::run, liveview_substream, this);
+		}
+
 		update_osd(this);
 		if (!(iteration++ % 50))
 			check_schedule(this);
 
 		if (!bc->input->is_started()) {
 			if (bc->input->start() < 0) {
-				if (!start_failed) {
+				if ((start_failed & BC_MAINSTREAM_START_FAILED) == 0) {
 					log.log(Error, "Error starting device stream: %s", bc->input->get_error_message());
 					/* Notification hook to PHP: device is offline */
 					notify_device_state("OFFLINE");
 				}
-				start_failed++;
+				start_failed |= BC_MAINSTREAM_START_FAILED;
 				do_error_event(this, BC_EVENT_L_ALRM, BC_EVENT_CAM_T_NOT_FOUND);
 				goto error;
-			} else if (start_failed) {
-				start_failed = 0;
+			} else if (start_failed & BC_MAINSTREAM_START_FAILED) {
+				start_failed &= ~BC_MAINSTREAM_START_FAILED;
 				log.log(Error, "Stream started after failures");
 			}
 
@@ -193,8 +212,9 @@ void bc_record::run()
 				log.log(Info, "Stream started: %s", info);
 			}
 
-			if (bc_streaming_setup(this))
-				log.log(Error, "Unable to setup live broadcast of device stream");
+			if (bc->substream_mode == BC_DEVICE_STREAMING_COMMON_INPUT)
+				if (bc_streaming_setup(this, this->bc->input->properties()))
+					log.log(Error, "Unable to setup live broadcast of device stream");
 		}
 
 		if (sched_last) {
@@ -283,8 +303,13 @@ void bc_record::run()
 				th.detach();
 			}
 
-			if (cfg.reencode_enabled) {
+			if (cfg.reencode_enabled && bc->substream_mode == BC_DEVICE_STREAMING_COMMON_INPUT) {
 				reenc = new reencoder(cfg.reencode_bitrate, cfg.reencode_frame_width, cfg.reencode_frame_height);
+
+				/* Reencoded stream has different properties, they'll be set later when
+				 * the first packet comes out from encoder */
+				if (bc_streaming_is_setup(this))
+					bc_streaming_destroy(this);
 			}
 
 			sched_last = 0;
@@ -316,20 +341,35 @@ void bc_record::run()
 		bc->source->send(packet);
 
 		/* Reencode packet for live streaming here */
-		if (bc_streaming_is_active(this) && reenc && packet.type == AVMEDIA_TYPE_VIDEO) {
-			if (reenc->push_packet(packet) && reenc->run_loop()) {
-				bc_log(Debug, "got reencoded packet!");
-				packet = reenc->packet();
+		if (!bc->substream_mode && reenc && packet.type == AVMEDIA_TYPE_VIDEO) {
+			if (reenc->push_packet(packet, true)) {
+				while (reenc->run_loop());
+
+				while(reenc->read_streaming_packet()) {
+					packet = reenc->streaming_packet();
+
+					if (!bc_streaming_is_setup(this)) {
+						if (bc_streaming_setup(this, packet.properties()))
+							log.log(Error, "Unable to reinitialize reencoded live view stream");
+					}
+
+					if (bc_streaming_is_active(this))
+						if (bc_streaming_packet_write(this, packet) == -1)
+							log.log(Error, "Failed to stream reencoded live view");
+				}
 			}
-			else
-				continue;
+
+			continue;
 		}
 
 		/* Send packet to streaming clients */
-		if (bc_streaming_is_active(this))
+		if (bc_streaming_is_active(this) && !bc->substream_mode) {
+
 			if (bc_streaming_packet_write(this, packet) == -1) {
 				goto error;
 			}
+		}
+
 		continue;
 error:
 		sleep(10);
@@ -374,6 +414,8 @@ bc_record::bc_record(int i)
 	m_handler = 0;
 	rec = 0;
 	reenc = 0;
+	liveview_substream = 0;
+	liveview_substream_thread = 0;
 }
 
 bc_record *bc_record::create_from_db(int id, BC_DB_RES dbres)
@@ -623,7 +665,9 @@ static int apply_device_cfg(struct bc_record *bc_rec)
 	    current->reencode_bitrate != update->reencode_bitrate ||
 	    current->reencode_frame_width != update->reencode_frame_width ||
 	    current->reencode_frame_height != update->reencode_frame_height ||
-	    current->aud_disabled != update->aud_disabled)
+	    current->aud_disabled != update->aud_disabled ||
+	    current->substream_mode != update->substream_mode ||
+	    strcmp(current->substream_path, update->substream_path))
 	{
 		bc_rec->thread_should_die = "configuration changed";
 		pthread_mutex_unlock(&bc_rec->cfg_mutex);
