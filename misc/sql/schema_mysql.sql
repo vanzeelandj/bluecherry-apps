@@ -69,6 +69,7 @@ CREATE TABLE `Devices` (
   `motion_algorithm` tinyint(1) DEFAULT '1',
   `frame_downscale_factor` decimal(4,3) DEFAULT '0.500',
   `min_motion_area` smallint(6) DEFAULT '5',
+  `max_motion_area` smallint(5) DEFAULT '90',
   `motion_analysis_ssw_length` int(11) DEFAULT '-1',
   `motion_analysis_percentage` int(11) DEFAULT '-1',
   `schedule` varchar(168) NOT NULL DEFAULT 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC',
@@ -82,6 +83,12 @@ CREATE TABLE `Devices` (
   `reencode_frame_height` smallint(6) NOT NULL DEFAULT '240',
   `substream_mode` tinyint(1) DEFAULT '0',
   `substream_path` varchar(255) DEFAULT NULL,
+  `onvif_events_enabled` tinyint(1) DEFAULT '0',
+  `min_motion_frames` smallint(5) DEFAULT '15',
+  `max_motion_frames` smallint(5) DEFAULT '20',
+  `motion_blend_ratio` smallint(5) DEFAULT '15',
+  `motion_debug` tinyint(1) DEFAULT '0',
+
   PRIMARY KEY (`id`),
   UNIQUE KEY `device_name` (`device_name`),
   UNIQUE KEY `device` (`device`,`mjpeg_path`,`protocol`,`channel`)
@@ -220,6 +227,19 @@ CREATE TABLE `Media` (
   CONSTRAINT `Media_ibfk_1` FOREIGN KEY (`device_id`) REFERENCES `Devices` (`id`) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `OnvifEvents`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `OnvifEvents` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `device_id` int(11) NOT NULL,
+  `event_time` datetime NOT NULL,
+  `onvif_topic` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `OnvifEvents_ibfk_1` (`device_id`),
+  CONSTRAINT `OnvifEvents_ibfk_1` FOREIGN KEY (`device_id`) REFERENCES `Devices` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `PTZPresets`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
@@ -238,6 +258,16 @@ DROP TABLE IF EXISTS `RtspAuthTokens`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `RtspAuthTokens` (
+  `user_id` int(11) NOT NULL,
+  `token` varchar(100) NOT NULL,
+  `date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uniq_session` (`user_id`,`token`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `HlsAuthTokens`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `HlsAuthTokens` (
   `user_id` int(11) NOT NULL,
   `token` varchar(100) NOT NULL,
   `date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -329,6 +359,24 @@ CREATE TABLE `ipPtzCommandPresets` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+
+DROP TABLE IF EXISTS `webhooks`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `webhooks` (
+	`id` SMALLINT(5) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`label` VARCHAR(50) NOT NULL,
+	`url` VARCHAR(255) NOT NULL,
+	`events` VARCHAR(255) NULL DEFAULT NULL,
+	`cameras` VARCHAR(255) NULL DEFAULT NULL,
+	`status` TINYINT(4) NOT NULL DEFAULT '0',
+	`last_update` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+
 DROP TABLE IF EXISTS `notificationSchedules`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;

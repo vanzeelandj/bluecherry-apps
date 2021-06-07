@@ -29,11 +29,14 @@
 #include "v4l2_device_solo6010-dkms.h"
 #include "v4l2_device_tw5864.h"
 #include "stream_elements.h"
+#include "onvif_events.h"
 #include "motion_processor.h"
 #include "trigger_processor.h"
 #include "motion_handler.h"
 #include "recorder.h"
 #include "substream-thread.h"
+
+#include "hls.h"
 
 #define DEF_TH_LOG_LEVEL Warning
 
@@ -57,7 +60,9 @@ static void do_error_event(struct bc_record *bc_rec, bc_event_level_t level,
 void stop_handle_properly(struct bc_record *bc_rec)
 {
 	if (!bc_rec->bc->substream_mode)
-		bc_streaming_destroy(bc_rec);
+		bc_streaming_destroy_rtp(bc_rec);
+
+	bc_streaming_destroy_hls(bc_rec);
 
 	if (bc_rec->liveview_substream)
 	{
@@ -213,8 +218,13 @@ void bc_record::run()
 			}
 
 			if (bc->substream_mode == BC_DEVICE_STREAMING_COMMON_INPUT)
-				if (bc_streaming_setup(this, this->bc->input->properties()))
+			{
+				if (bc_streaming_setup(this, BC_RTP, this->bc->input->properties()))
 					log.log(Error, "Unable to setup live broadcast of device stream");
+
+				if (bc_streaming_setup(this, BC_HLS, this->bc->input->properties()))
+					log.log(Error, "Unable to setup HLS live of device stream");
+			}
 		}
 
 		if (sched_last) {
@@ -261,13 +271,19 @@ void bc_record::run()
 					bc->input->set_motion(true);
 					bc->source->connect(m_handler->input_consumer(), stream_source::StartFromLastKeyframe);
 				} else {
-					m_processor = new motion_processor;
+					m_processor = new motion_processor(this);
 					m_processor->set_logging_context(log);
 					update_motion_thresholds();
 
 					m_processor->set_motion_algorithm(cfg.motion_algorithm);
 					m_processor->set_frame_downscale_factor(cfg.motion_frame_downscale_factor);
 					m_processor->set_min_motion_area_percent(cfg.min_motion_area);
+                    m_processor->set_max_motion_area_percent(cfg.max_motion_area);
+
+                    m_processor->set_max_motion_frames(cfg.max_motion_frames);
+                    m_processor->set_min_motion_frames(cfg.min_motion_frames);
+                    m_processor->set_motion_blend_ratio(cfg.motion_blend_ratio);
+                    m_processor->set_motion_debug(cfg.motion_debug);
 
 					bc->source->connect(m_processor, stream_source::StartFromLastKeyframe);
 					m_processor->output()->connect(m_handler->input_consumer());
@@ -301,6 +317,11 @@ void bc_record::run()
 
 				std::thread th(&motion_handler::run, m_handler);
 				th.detach();
+
+				if (cfg.onvif_events_enabled) {
+					onvif_ev = new onvif_events();
+					onvif_ev_thread = new std::thread(&onvif_events::run, onvif_ev, this);
+				}
 			}
 
 			if (cfg.reencode_enabled && bc->substream_mode == BC_DEVICE_STREAMING_COMMON_INPUT) {
@@ -309,7 +330,7 @@ void bc_record::run()
 				/* Reencoded stream has different properties, they'll be set later when
 				 * the first packet comes out from encoder */
 				if (bc_streaming_is_setup(this))
-					bc_streaming_destroy(this);
+					bc_streaming_destroy_rtp(this);
 			}
 
 			sched_last = 0;
@@ -349,8 +370,13 @@ void bc_record::run()
 					packet = reenc->streaming_packet();
 
 					if (!bc_streaming_is_setup(this)) {
-						if (bc_streaming_setup(this, packet.properties()))
+						if (bc_streaming_setup(this, BC_RTP, packet.properties()))
 							log.log(Error, "Unable to reinitialize reencoded live view stream");
+					}
+
+					if (hls_stream) {
+						if (bc_streaming_hls_packet_write(this, packet) == -1)
+							log.log(Error, "Failed to stream reencoded HLS");
 					}
 
 					if (bc_streaming_is_active(this))
@@ -360,6 +386,12 @@ void bc_record::run()
 			}
 
 			continue;
+		}
+
+		if (bc_streaming_is_active_hls(this)) {
+			if (bc_streaming_hls_packet_write(this, packet) == -1) { 
+				goto error;
+			}
 		}
 
 		/* Send packet to streaming clients */
@@ -395,9 +427,14 @@ bc_record::bc_record(int i)
 	cfg_dirty = 0;
 	pthread_mutex_init(&cfg_mutex, NULL);
 
-	stream_ctx[0] = 0;
-	stream_ctx[1] = 0;
+	rtp_stream_ctx[0] = 0;
+	rtp_stream_ctx[1] = 0;
 	rtsp_stream = 0;
+
+	hls_segment_type = hls_segment::type::mpegts;
+	hls_stream_ctx[0] = 0;
+	hls_stream_ctx[1] = 0;
+	hls_stream = 0;
 
 	osd_time = 0;
 	start_failed = 0;
@@ -408,6 +445,8 @@ bc_record::bc_record(int i)
 	sched_last = 0;
 	thread_should_die = 0;
 	file_started = 0;
+	onvif_ev = 0;
+	onvif_ev_thread = 0;
 
 	m_processor = 0;
 	t_processor = 0;
@@ -521,6 +560,12 @@ void bc_record::destroy_elements()
 		t_processor->disconnect();
 		t_processor->destroy();
 		t_processor = 0;
+	}
+
+	if (onvif_ev) {
+		onvif_ev->stop();
+		onvif_ev = 0;
+		onvif_ev_thread->join();
 	}
 
 	if (m_handler) {
@@ -661,6 +706,8 @@ static int apply_device_cfg(struct bc_record *bc_rec)
 	    strcmp(current->signal_type, update->signal_type) ||
 	    strcmp(current->rtsp_username, update->rtsp_username) ||
 	    strcmp(current->rtsp_password, update->rtsp_password) ||
+	    current->onvif_events_enabled != update->onvif_events_enabled ||
+	    current->onvif_port != update->onvif_port ||
 	    current->reencode_enabled != update->reencode_enabled ||
 	    current->reencode_bitrate != update->reencode_bitrate ||
 	    current->reencode_frame_width != update->reencode_frame_width ||
@@ -688,7 +735,13 @@ static int apply_device_cfg(struct bc_record *bc_rec)
 
 	bool motion_config_changed = (current->motion_algorithm != update->motion_algorithm
 			|| abs(current->motion_frame_downscale_factor - update->motion_frame_downscale_factor) > 0.0625
-			|| current->min_motion_area != update->min_motion_area);
+			|| current->min_motion_area != update->min_motion_area
+            || current->max_motion_area != update->max_motion_area
+            || current->max_motion_frames != update->max_motion_frames
+            || current->min_motion_frames != update->min_motion_frames
+            || current->motion_blend_ratio != update->motion_blend_ratio
+            || current->motion_debug != update->motion_debug
+    );
 
 	memcpy(current, update, sizeof(struct bc_device_config));
 	bc_rec->cfg_dirty = 0;
@@ -724,6 +777,11 @@ static int apply_device_cfg(struct bc_record *bc_rec)
 		bc_rec->m_processor->set_motion_algorithm(bc_rec->cfg.motion_algorithm);
 		bc_rec->m_processor->set_frame_downscale_factor(bc_rec->cfg.motion_frame_downscale_factor);
 		bc_rec->m_processor->set_min_motion_area_percent(bc_rec->cfg.min_motion_area);
+        bc_rec->m_processor->set_max_motion_area_percent(bc_rec->cfg.max_motion_area);
+        bc_rec->m_processor->set_max_motion_frames(bc_rec->cfg.max_motion_frames);
+        bc_rec->m_processor->set_min_motion_frames(bc_rec->cfg.min_motion_frames);
+        bc_rec->m_processor->set_motion_blend_ratio(bc_rec->cfg.motion_blend_ratio);
+        bc_rec->m_processor->set_motion_debug(bc_rec->cfg.motion_debug);
 	}
 
 	if (mrecord_changed && bc_rec->m_handler) {

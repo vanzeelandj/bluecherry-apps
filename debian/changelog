@@ -1,3 +1,55 @@
+bluecherry (3:3.1.0-rc1) focal bionic buster groovy; urgency=low
+
+  * FEATURE: Migrate completely to nginx instead of Apache (#436)
+  * FEATURE: Support HLS web streaming for live view (#437)
+  * FEATURE: Allow trial licenses
+  * FEATURE: Start initial work to support Lets Encrypt SSL (will be fully added in -RC2) -- Requires paid license.
+  
+ -- Curtis Hall <chall@corp.bluecherry.net>  Wed, 6 June 2021 19:25:00 -0600   
+
+bluecherry (3:3.0.6) focal bionic buster groovy; urgency=low
+
+  * FIX: Lack of string etiquette in the trigger server, resolve buffer overrun (#434)
+  * FIX: Nasty storage deletion routine bug where old videos may not be deleted, resulting in 100% disk usage and failure to compontents (#433)
+  * FIX: Web: Layout problem when cameras are disabled (#227)
+  * FEATURE: Auto-expand IP Cameras in Devices page (#430)
+
+ -- Curtis Hall <chall@corp.bluecherry.net>  Mon, 10 May 2021 13:21:52 -0600 
+
+bluecherry (3:3.0.5) focal bionic buster groovy; urgency=low
+
+  * FIX: Web playback - AJAX error caused by the wrong time format (#388)
+  * FIX: Fixed segment violation bug in recording schedule (#425)
+  * FIX: Change VAAPI to 'None' by default (#421)
+  * FIX: Web backup / restore - Fixed problem where backup and restore would always fail (#414 / #409)
+  * FIX: Fix mailer.php (attachments were broken) (#405)
+  * FIX: TLS / SASL improvements (#366)
+  * FEATURE: Support systemd (allowing for newer Ubuntu distributions) (#406)
+  * FEATURE: Adds temporal-based motion detection algorithm - Added by Kyle Mallory <kylemallory@yahoo.com>
+  * FEATURE: Minor improvements to Experimental motion detection algorithm, specifically support for "max motion area". - Added by Kyle Mallory <kylemallory@yahoo.com>
+
+ -- Curtis Hall <chall@corp.bluecherry.net>  Wed, 28 Apr 2021 12:57:28 -0600 
+
+bluecherry (3:3.0.4) focal bionic buster; urgency=low
+
+  * Restart subscription to ONVIF events if connection is lost
+
+ -- Anton Sviridenko <anton@corp.bluecherry.net>  Wed, 25 Nov 2020 09:05:00 +0400
+
+bluecherry (3:3.0.3) focal bionic buster; urgency=low
+
+  * Discover IP cameras using ONVIF WSDD
+
+  * Autoconfigure RTSP paths using ONVIF
+
+  * Recording triggered by ONVIF events (in trigger mode)
+
+  * Webhooks
+
+  * Updated playback screen layout
+
+ -- Anton Sviridenko <anton@corp.bluecherry.net>  Mon, 21 Sep 2020 05:30:00 +0400
+
 bluecherry (3:3.0.2) xenial bionic stretch; urgency=low
 
   * #383 - ONVIF PTZ not functioning

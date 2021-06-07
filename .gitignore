@@ -21,3 +21,5 @@ bc.cgi
 /debian/files
 
 /stage/
+
+.DS_Store

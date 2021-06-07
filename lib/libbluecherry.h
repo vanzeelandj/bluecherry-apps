@@ -109,6 +109,8 @@ struct bc_device_config {
 	char motion_map[769];
 	int8_t motion_algorithm;
 	double motion_frame_downscale_factor;
+	bool onvif_events_enabled;
+	int onvif_port;
 	int min_motion_area;
 	char schedule[7 * 24 + 1];
 	int     width, height;
@@ -127,6 +129,12 @@ struct bc_device_config {
 	int reencode_frame_height;
 	int8_t substream_mode;
 	char substream_path[256];
+
+	int max_motion_area;
+    int min_motion_frames;
+	int max_motion_frames;
+	int motion_blend_ratio;
+	bool motion_debug;
 };
 
 struct bc_license {

@@ -26,14 +26,83 @@ if (empty($argv[1]) || empty($argv[2])){
 	exit("E: Usage: ${argv[0]} <event class> <arg>...");
 }
 
-#PEAR::Mail mailer
-include_once('Mail.php');
-include_once('Mail/mime.php');
+require_once '/usr/share/bluecherry/www/vendor/autoload.php';
 
-$crlf = "\r\n";
-$mime = new Mail_mime($crlf);
+
+
 
 $timestamp = time();
+
+function webhook_trigger($eventName, $deviceId = null, $payload = array()) {
+	$webhooks = data::query('SELECT * FROM `webhooks` WHERE `status` = 1');
+
+	if (empty($webhooks)) {
+		return;
+	}
+
+	$handlers = array();
+	$cct = curl_multi_init();
+
+	foreach ($webhooks as $webhook) {
+
+		$events = empty($webhook['events']) ? array() :  explode(',', $webhook['events']);
+
+		// empty event value means all events
+		if (!empty($events) && !in_array($eventName, $events)) {
+			continue;
+		}
+
+		$devices = empty($webhook['cameras']) ? array() :  explode(',', $webhook['cameras']);
+
+		// empty event value means all devices
+		if (!empty($deviceId) && !empty($devices) && !in_array($deviceId, $devices)) {
+			continue;
+		}
+
+		$uuidParam = data::query('SELECT `value` FROM `GlobalSettings` WHERE `parameter` = \'G_SERVER_UUID\' LIMIT 1');
+
+		if (!empty($uuidParam)) {
+			$payload['server_uuid'] = $uuidParam[0]['value'];
+		}
+
+		$body = json_encode(array_merge(array(
+			'event_name' => $eventName,
+			'event_datetime' => date(DATE_ATOM)
+		), $payload));
+
+		$ch = curl_init($webhook['url']);
+		curl_setopt_array($ch, array(
+			CURLOPT_CUSTOMREQUEST => 'POST',
+			CURLOPT_POSTFIELDS => $body,
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_TIMEOUT => 5,
+			CURLOPT_HTTPHEADER => array(
+				'Content-Type: application/json',
+				'Content-Length: ' . strlen($body))
+			));
+
+		curl_multi_add_handle($cct, $ch);
+		$handlers[] = $ch;
+	}
+
+	if (empty($handlers)) {
+		curl_multi_close($cct);
+		return;
+	}
+
+	do {
+		curl_multi_exec($cct, $active);
+		curl_multi_select($cct);
+	} while ($active);
+
+	foreach ($handlers as $handler) {
+		curl_multi_remove_handle($cct, $handler);
+	}
+
+	curl_multi_close($cct);
+}
+
+
 
 if ($argv[1] == "motion_event") {
 	$event = data::getObject('Media', 'id', $argv[2]);
@@ -43,28 +112,60 @@ if ($argv[1] == "motion_event") {
 	#get device details
 	$device = data::getObject('Devices', 'id', $device_id);
 
+	webhook_trigger('motion_event', $device_id, array(
+		'device_id' => $device_id,
+		'device_name' => $device[0]['device_name'],
+		'dvr_name' => $global_settings->data['G_DVR_NAME']
+	));
+
 } else if ($argv[1] == "device_state") {
 	$device_id = $argv[2];
 	$state = $argv[3];  // e.g. OFFLINE, BACK ONLINE
 	#get device details
 	$device = data::getObject('Devices', 'id', $device_id);
 
+	webhook_trigger('device_state', $device_id, array(
+		'device_id' => $device_id,
+		'device_name' => $device[0]['device_name'],
+		'state' => $state,
+		'dvr_name' => $global_settings->data['G_DVR_NAME']
+	));
+
 	$subject = "Status notification for device {$device[0]['device_name']} on server {$global_settings->data['G_DVR_NAME']}";
-	$html = "
+	$message = new \Swift_Message($subject);
+
+    if (!empty($global_settings->data['G_SMTP_EMAIL_FROM'])) {
+		$message->setFrom($global_settings->data['G_SMTP_EMAIL_FROM']);
+    }
+
+	$message->setBody("
 	<html>
 		<body>
 Device {$device[0]['device_name']} got $state on server {$global_settings->data['G_DVR_NAME']}
 		</body>
-	</html>";
+	</html>", 'text/html');
 } else if ($argv[1] == "solo") {
 	$state = $argv[2];
+
+	webhook_trigger('solo', null, array(
+		'state' => $state,
+		'dvr_name' => $global_settings->data['G_DVR_NAME']
+	));
+
 	$subject = "Status notification for Bluecherry SOLO card(s) on server {$global_settings->data['G_DVR_NAME']}";
-	$html = "
+    
+	$message = new \Swift_Message($subject);
+
+    if (!empty($global_settings->data['G_SMTP_EMAIL_FROM'])) {
+		$message->setFrom($global_settings->data['G_SMTP_EMAIL_FROM']);
+    }
+        
+	$message->setBody("
 	<html>
 		<body>
 SOLO card(s) got $state on server {$global_settings->data['G_DVR_NAME']}
 		</body>
-	</html>";
+	</html>", 'text/html');
 } else {
 	exit('E: Unknown event type');
 }
@@ -123,7 +224,19 @@ if (!$rules){
 
         $image_name = data::getRandomString(8);
         $subject = "Event on device {$device[0]['device_name']} on server {$global_settings->data['G_DVR_NAME']}";
-        $html = "
+        
+		$message = new \Swift_Message($subject);
+
+        if (!empty($global_settings->data['G_SMTP_EMAIL_FROM'])) {
+            $message->setFrom($global_settings->data['G_SMTP_EMAIL_FROM']);
+        }
+            
+
+		$attachment = \Swift_Image::fromPath($path_to_image)
+			->setContentType('image/jpeg')
+			->setFilename($image_name . '.jpg')
+			->setDisposition('inline');
+        $message->setBody("
         <html>
         <head>
             <style>
@@ -152,17 +265,13 @@ if (!$rules){
             </div>
             <div class='screenshot'>
                 Event screenshot:<br />
-                <img height='240' src='{$image_name}.jpg'>
+                <img height='240' src='{$message->embed($attachment)}'>
             </div>
             </body>
-        </html>";
-        $mime->addHTMLImage($path_to_image, "image/jpeg", "{$image_name}.jpg", true, $image_name);
+        </html>", 'text/html');
     }
 }
-$headers = array("From"=>$global_settings->data['G_SMTP_EMAIL_FROM'], "Subject" => $subject);
-$mime->setHTMLBody($html);
-$headers = $mime->headers($headers);
-$body = $mime->get();
+
 
 
 $rules_ids = '';
@@ -197,40 +306,43 @@ $emails = array();
 
 foreach($users as $id => $user){
 	$user = data::getObject('Users', 'id', $user);
-	$tmp = explode('|', $user[0]['email']);
-	$emails = array_merge($emails, $tmp);
+	$emails = array_merge($emails, explode('|', $user[0]['email']));
 }
-$emails = array_unique($emails);
+
+$message->setTo(array_unique($emails));
 
 switch($global_settings->data['G_SMTP_SERVICE']){
 	case 'default': #use MTA
-		$mail = Mail::factory('mail');
+		$transport = new \Swift_SendmailTransport('/usr/sbin/sendmail -bs');
 	break;
 	case 'smtp': #user user supplied SMTP config
-		$smtp_params['host'] = (($global_settings->data['G_SMTP_SSL'] == 'none') ? '' : 'ssl://').$global_settings->data['G_SMTP_HOST'];
-		$smtp_params['port'] = $global_settings->data['G_SMTP_PORT'];
-		$smtp_params['username'] = $global_settings->data['G_SMTP_USERNAME'];
-		$smtp_params['password'] = $global_settings->data['G_SMTP_PASSWORD'];
-		$smtp_params['auth'] = true;
-		$mail = Mail::factory('smtp', $smtp_params);
-		if ($global_settings->data['G_SMTP_SSL'] == 'tls') {
-			$mail->SMTPSecure = "ssl";
-		};
+
+		$transport = (new \Swift_SmtpTransport($global_settings->data['G_SMTP_HOST']))
+			->setUsername($global_settings->data['G_SMTP_USERNAME'])
+			->setPassword($global_settings->data['G_SMTP_PASSWORD']);
+
+		if (isset($global_settings->data['G_SMTP_PORT'])) {
+			$transport->setPort($global_settings->data['G_SMTP_PORT']);
+		}
+
+		if (isset($global_settings->data['G_SMTP_SSL']) && in_array($global_settings->data['G_SMTP_SSL'], ['ssl', 'tls'], true)) {
+            $transport->setEncryption($global_settings->data['G_SMTP_SSL']);
+        }
 	break;
 }
 
-$error = null;
-foreach($emails as $email){
-		$re = $mail->send($email, $headers, $body); 
-		if ($re !== TRUE)
-			$error = $re;
-}
+$logger = new \Swift_Plugins_Loggers_ArrayLogger();
+$transport->registerPlugin(new \Swift_Plugins_LoggerPlugin($logger));
 
-if (PEAR::isError($error)) {
-	$tmp = data::query("UPDATE GlobalSettings set value='{$error->getMessage()}' WHERE parameter='G_SMTP_FAIL'", true);
-	exit("E: ".$error->getMessage());
-} else {
-	$tmp = data::query("UPDATE GlobalSettings set value='' WHERE parameter='G_SMTP_FAIL'", true);
+
+
+if ($transport->send($message)) {
+	data::query("UPDATE GlobalSettings set value='' WHERE parameter='G_SMTP_FAIL'", true);
 	exit('OK');
+
+} else {
+	$message = $logger->dump();
+	data::query("UPDATE GlobalSettings set value='{$message}' WHERE parameter='G_SMTP_FAIL'", true);
+	exit("E: " . $message);
 }
 ?>
